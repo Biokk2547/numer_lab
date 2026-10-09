@@ -5,7 +5,7 @@
   <title>Numerical Lab — เห็นภาพ เข้าใจวิธีคิด</title>
   <meta name="description" content="ห้องทดลอง Numerical Methods พร้อมกราฟแบบ interactive เล่นขั้นตอนการคำนวณ และสำรวจความคลาดเคลื่อน">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%237456db'/%3E%3Cpath d='M6 23L12 9l7 14 7-15' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="styles.css"><script src="app.js" defer></script>
+  <link rel="stylesheet" href="styles.css"><script src="app.js" defer></script><script src="conjugate-gradient.js" defer></script>
 </head>
 <body>
 <aside class="sidebar">
@@ -15,6 +15,7 @@
     <button class="nav-item active" data-mode="root"><span>⌁</span> หารากของสมการ <i>03</i></button>
     <button class="nav-item" data-mode="integral"><span>∫</span> การหาปริพันธ์ <i>02</i></button>
     <button class="nav-item" data-mode="ode"><span>↗</span> สมการเชิงอนุพันธ์ <i>01</i></button>
+    <button class="nav-item" data-mode="linear"><span>⊞</span> ระบบสมการเชิงเส้น <i>01</i></button>
   </nav>
   <div class="sidebar-note"><span class="note-icon">✧</span><h3>ลองเปลี่ยน แล้วสังเกต</h3><p>เปลี่ยนค่าตั้งต้น เพื่อดูว่าแต่ละวิธีเข้าใกล้คำตอบอย่างไร</p><span class="small-chip">เรียนรู้ผ่านการทดลอง</span></div>
   <div class="sidebar-foot"><span class="status-dot"></span> คำนวณบนอุปกรณ์ของคุณ <small>NUMERICAL LAB / V1.0</small></div>
@@ -27,8 +28,8 @@
     <section class="card controls-card"><div class="card-heading"><div><span class="section-number">01</span><h2>ตั้งค่าการทดลอง</h2></div><span class="muted-icon">⚙</span></div>
       <form id="experimentForm" novalidate>
         <label for="preset">ตัวอย่างสมการ</label><select id="preset"></select>
-        <label for="expression" id="expressionLabel">ฟังก์ชัน f(x)</label><div class="formula-input"><span id="formulaPrefix">ƒ(x) =</span><input id="expression" value="x^3 - x - 2" autocomplete="off" spellcheck="false" aria-describedby="expressionHint"></div>
-        <p class="input-hint" id="expressionHint">ใช้ x, +, −, *, /, ^, sin(x), cos(x), exp(x)</p>
+        <div id="functionFields"><label for="expression" id="expressionLabel">ฟังก์ชัน f(x)</label><div class="formula-input"><span id="formulaPrefix">ƒ(x) =</span><input id="expression" value="x^3 - x - 2" autocomplete="off" spellcheck="false" aria-describedby="expressionHint"></div>
+        <p class="input-hint" id="expressionHint">ใช้ x, +, −, *, /, ^, sin(x), cos(x), exp(x)</p></div>
         <div id="parameterFields" class="parameters"></div>
         <div class="form-error" id="formError" role="alert" hidden></div>
         <button type="submit" class="primary-button"><span>เริ่มคำนวณ</span><span>↗</span></button>
@@ -42,11 +43,12 @@
       <div class="graph-legend" id="graphLegend"></div>
       <div class="playback"><button id="playButton" class="play-button" aria-label="เล่นขั้นตอนการคำนวณ">▶</button><button id="previousButton" class="icon-button" aria-label="ขั้นตอนก่อนหน้า">⏮</button><input id="stepSlider" type="range" min="1" max="1" value="1" aria-label="รอบการคำนวณ"><button id="nextButton" class="icon-button" aria-label="ขั้นตอนถัดไป">⏭</button><div class="step-counter"><small>STEP</small><strong id="stepCounter">01 / 01</strong></div><select id="speed" aria-label="ความเร็วการเล่น"><option value="900">1×</option><option value="450">2×</option><option value="1800">0.5×</option></select></div>
       <div class="step-explanation" id="stepExplanation" aria-live="polite"></div>
+      <section class="cg-residual-panel" id="cgResidualPanel" hidden><div class="cg-chart-heading"><strong>Residual ในแต่ละรอบ</strong><span>‖b − Axₖ‖₂ · log scale</span></div><canvas id="cgResidual" role="img" aria-label="กราฟ residual ในแต่ละรอบ"></canvas><p class="cg-residual-note">ค่า residual ≤ 10⁻¹⁶ แสดงที่ระดับ 10⁻¹⁶ บนกราฟ · ดูค่าจริงได้ในตาราง</p></section>
     </section>
   </div>
   <section class="results" aria-live="polite"><article class="result-card"><div class="result-label" id="answerLabel">ค่ารากโดยประมาณ <span>↗</span></div><strong id="answer">—</strong><small id="answerDetail">ผลจากการคำนวณ</small></article><article class="result-card"><div class="result-label">จำนวนรอบ <span>↻</span></div><strong id="iterations">—</strong><small>ขั้นตอนทั้งหมดที่ใช้คำนวณ</small></article><article class="result-card"><div class="result-label" id="errorLabel">Residual |f(x)| <span>◎</span></div><strong id="errorValue">—</strong><small id="errorDetail">ค่ายิ่งเล็ก ยิ่งเข้าใกล้คำตอบ</small></article><article class="result-card convergence"><div class="result-label">สถานะการคำนวณ <span>✓</span></div><strong id="resultStatus">—</strong><small id="statusDetail">กำลังรอการคำนวณ</small></article></section>
   <section class="card history-card"><div class="card-heading"><div><span class="section-number">03</span><h2>บันทึกการคำนวณ</h2><span class="table-count" id="tableCount"></span></div><button class="plain-button" id="downloadButton">↓ ดาวน์โหลด CSV</button></div><div class="table-scroll"><table><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table></div><div class="table-footer"><span><i class="purple-dot"></i> แถวที่เลือกตรงกับขั้นตอนบนกราฟ</span><span id="tableNote">คลิกแถวเพื่อสำรวจแต่ละรอบ</span></div></section>
   <footer class="page-footer"><span>numerical lab <i>—</i> เปลี่ยนสมการให้เป็นความเข้าใจ</span><span>Built with curiosity & mathematics.</span></footer>
 </main>
-<dialog id="guideDialog"><button class="dialog-close icon-button" id="closeGuide" aria-label="ปิดคู่มือ">×</button><div class="eyebrow">QUICK GUIDE</div><h2>เรียนรู้จากทุกขั้นตอน</h2><ol><li>เลือกหมวดและวิธีคำนวณ</li><li>เลือกตัวอย่างหรือใส่ฟังก์ชันเอง โดยใช้ * สำหรับการคูณ เช่น 2*x</li><li>ตั้งค่าเริ่มต้น แล้วกด “เริ่มคำนวณ”</li><li>กดเล่น เลื่อนแถบขั้นตอน หรือคลิกแถวในตารางเพื่อดูกราฟ</li></ol><p>Bisection ต้องมี f(a) และ f(b) คนละเครื่องหมาย ส่วน Newton และ Secant อาจไม่ลู่เข้าหากค่าตั้งต้นไม่เหมาะสม</p><p>Euler รองรับ y และ x เช่น y-x^2+1 การประมาณปริพันธ์แสดงผลต่างเมื่อเพิ่มความละเอียดสองเท่า ซึ่งไม่ใช่ขอบเขตความคลาดเคลื่อนที่รับประกัน</p><p>รองรับ sin, cos, tan, exp, log (ลอการิทึมธรรมชาติ), sqrt, abs, pi และ e มุมใช้หน่วยเรเดียน</p></dialog>
+<dialog id="guideDialog"><button class="dialog-close icon-button" id="closeGuide" aria-label="ปิดคู่มือ">×</button><div class="eyebrow">QUICK GUIDE</div><h2>เรียนรู้จากทุกขั้นตอน</h2><ol><li>เลือกหมวดและวิธีคำนวณ</li><li>เลือกตัวอย่างหรือใส่ฟังก์ชันเอง โดยใช้ * สำหรับการคูณ เช่น 2*x</li><li>ตั้งค่าเริ่มต้น แล้วกด “เริ่มคำนวณ”</li><li>กดเล่น เลื่อนแถบขั้นตอน หรือคลิกแถวในตารางเพื่อดูกราฟ</li></ol><p>Bisection ต้องมี f(a) และ f(b) คนละเครื่องหมาย ส่วน Newton และ Secant อาจไม่ลู่เข้าหากค่าตั้งต้นไม่เหมาะสม</p><p>Euler รองรับ y และ x เช่น y-x^2+1 การประมาณปริพันธ์แสดงผลต่างเมื่อเพิ่มความละเอียดสองเท่า ซึ่งไม่ใช่ขอบเขตความคลาดเคลื่อนที่รับประกัน</p><p>Conjugate Gradient ในห้องทดลองนี้รองรับระบบ 2 × 2 เพื่อแสดงเส้นชั้นความสูงของ φ(x) = ½xᵀAx − bᵀx เมทริกซ์ A ต้องสมมาตรและ positive definite หยุดเมื่อ ‖b − Ax‖₂ ≤ ε ในเลขคณิตที่แม่นตรงใช้ไม่เกิน 2 รอบ แต่ floating point อาจต่างออกไป จุดสีส้มคือค่าตั้งต้น จุดสีเขียวคือค่าปัจจุบัน และ + คือคำตอบอ้างอิง</p><p>รองรับ sin, cos, tan, exp, log (ลอการิทึมธรรมชาติ), sqrt, abs, pi และ e มุมใช้หน่วยเรเดียน</p></dialog>
 </body></html>
